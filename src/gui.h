@@ -20,7 +20,6 @@ typedef enum {
     LV_ICON_CALCULATION
 } lv_icon_battery_t;
 
-
 typedef enum {
     LV_STATUS_BAR_BATTERY_LEVEL = 0,
     LV_STATUS_BAR_BATTERY_ICON = 1,
@@ -29,7 +28,7 @@ typedef enum {
 } lv_icon_status_bar_t;
 
 void setupGui();
-void updateStepCounter(uint32_t counter);
+void updateTime();
 void updateBatteryIcon(lv_icon_battery_t index);
 void wifi_list_add(const char *ssid);
 void wifi_connect_status(bool result);

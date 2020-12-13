@@ -23,14 +23,6 @@ Created by Lewis he on October 10, 2019.
 
 LV_FONT_DECLARE(Geometr);
 LV_FONT_DECLARE(Ubuntu);
-LV_IMG_DECLARE(bg);
-LV_IMG_DECLARE(bg1);
-LV_IMG_DECLARE(bg2);
-LV_IMG_DECLARE(bg3);
-LV_IMG_DECLARE(WALLPAPER_1_IMG);
-LV_IMG_DECLARE(WALLPAPER_2_IMG);
-LV_IMG_DECLARE(WALLPAPER_3_IMG);
-LV_IMG_DECLARE(step);
 LV_IMG_DECLARE(menu);
 
 LV_IMG_DECLARE(wifi);
@@ -53,13 +45,13 @@ extern QueueHandle_t g_event_queue_handle;
 static lv_style_t settingStyle;
 static lv_obj_t *mainBar = nullptr;
 static lv_obj_t *timeLabel = nullptr;
+static lv_obj_t *dateLabel = nullptr;
 static lv_obj_t *menuBtn = nullptr;
 
 static uint8_t globalIndex = 0;
 
 static void lv_update_task(struct _lv_task_t *);
 static void lv_battery_task(struct _lv_task_t *);
-static void updateTime();
 static void view_event_handler(lv_obj_t *obj, lv_event_t event);
 
 static void wifi_event_cb();
@@ -113,22 +105,11 @@ public:
         lv_img_set_src(_array[3].icon, LV_SYMBOL_BLUETOOTH);
         lv_obj_set_hidden(_array[3].icon, true);
 
-        //step counter
-        _array[4].icon = lv_img_create(_bar, NULL);
-        lv_img_set_src(_array[4].icon, &step);
-        lv_obj_align(_array[4].icon, _bar, LV_ALIGN_IN_LEFT_MID, 10, 0);
-
         _array[5].icon = lv_label_create(_bar, NULL);
         lv_label_set_text(_array[5].icon, "0");
         lv_obj_align(_array[5].icon, _array[4].icon, LV_ALIGN_OUT_RIGHT_MID, 5, 0);
 
         refresh();
-    }
-
-    void setStepCounter(uint32_t counter)
-    {
-        lv_label_set_text(_array[5].icon, String(counter).c_str());
-        lv_obj_align(_array[5].icon, _array[4].icon, LV_ALIGN_OUT_RIGHT_MID, 5, 0);
     }
 
     void updateLevel(int level)
@@ -337,44 +318,30 @@ void setupGui()
 {
     lv_style_init(&settingStyle);
     lv_style_set_radius(&settingStyle, LV_OBJ_PART_MAIN, 0);
-    lv_style_set_bg_color(&settingStyle, LV_OBJ_PART_MAIN, LV_COLOR_GRAY);
-    lv_style_set_bg_opa(&settingStyle, LV_OBJ_PART_MAIN, LV_OPA_0);
+    lv_style_set_bg_color(&settingStyle, LV_OBJ_PART_MAIN, LV_COLOR_BLACK);
+    lv_style_set_bg_opa(&settingStyle, LV_OBJ_PART_MAIN, LV_OPA_COVER);
     lv_style_set_border_width(&settingStyle, LV_OBJ_PART_MAIN, 0);
-    lv_style_set_text_color(&settingStyle, LV_OBJ_PART_MAIN, LV_COLOR_WHITE);
-    lv_style_set_image_recolor(&settingStyle, LV_OBJ_PART_MAIN, LV_COLOR_WHITE);
+    lv_style_set_text_color(&settingStyle, LV_OBJ_PART_MAIN, LV_COLOR_GRAY);
+    lv_style_set_image_recolor(&settingStyle, LV_OBJ_PART_MAIN, LV_COLOR_GRAY);
 
-
-    //Create wallpaper
-    void *images[] = {(void *) &bg, (void *) &bg1, (void *) &bg2, (void *) &bg3 };
     lv_obj_t *scr = lv_scr_act();
-    lv_obj_t *img_bin = lv_img_create(scr, NULL);  /*Create an image object*/
-    srand((int)time(0));
-    int r = rand() % 4;
-    lv_img_set_src(img_bin, images[r]);
-    lv_obj_align(img_bin, NULL, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_add_style(scr, LV_OBJ_PART_MAIN, &settingStyle);
 
     //! bar
     bar.createIcons(scr);
     updateBatteryLevel();
-    lv_icon_battery_t icon = LV_ICON_CALCULATION;
-
     TTGOClass *ttgo = TTGOClass::getWatch();
-
-    if (ttgo->power->isChargeing()) {
-        icon = LV_ICON_CHARGE;
-    }
-    updateBatteryIcon(icon);
+    updateBatteryIcon((ttgo->power->isChargeing()) ? LV_ICON_CHARGE : LV_ICON_CALCULATION);
 
     //! main
     static lv_style_t mainStyle;
     lv_style_init(&mainStyle);
     lv_style_set_radius(&mainStyle, LV_OBJ_PART_MAIN, 0);
-    lv_style_set_bg_color(&mainStyle, LV_OBJ_PART_MAIN, LV_COLOR_GRAY);
-    lv_style_set_bg_opa(&mainStyle, LV_OBJ_PART_MAIN, LV_OPA_0);
+    lv_style_set_bg_color(&mainStyle, LV_OBJ_PART_MAIN, LV_COLOR_BLACK);
+    lv_style_set_bg_opa(&mainStyle, LV_OBJ_PART_MAIN, LV_OPA_COVER);
     lv_style_set_border_width(&mainStyle, LV_OBJ_PART_MAIN, 0);
-    lv_style_set_text_color(&mainStyle, LV_OBJ_PART_MAIN, LV_COLOR_WHITE);
-    lv_style_set_image_recolor(&mainStyle, LV_OBJ_PART_MAIN, LV_COLOR_WHITE);
-
+    lv_style_set_text_color(&mainStyle, LV_OBJ_PART_MAIN, LV_COLOR_OLIVE);
+    lv_style_set_image_recolor(&mainStyle, LV_OBJ_PART_MAIN, LV_COLOR_BLACK);
 
     mainBar = lv_cont_create(scr, NULL);
     lv_obj_set_size(mainBar,  LV_HOR_RES, LV_VER_RES - bar.height());
@@ -388,9 +355,13 @@ void setupGui()
 
     timeLabel = lv_label_create(mainBar, NULL);
     lv_obj_add_style(timeLabel, LV_OBJ_PART_MAIN, &timeStyle);
+    dateLabel = lv_label_create(mainBar, NULL);
+    lv_obj_add_style(dateLabel, LV_OBJ_PART_MAIN, &mainStyle);
     updateTime();
 
+
     //! menu
+    /* 
     static lv_style_t style_pr;
 
     lv_style_init(&style_pr);
@@ -405,42 +376,37 @@ void setupGui()
     lv_imgbtn_set_src(menuBtn, LV_BTN_STATE_CHECKED_PRESSED, &menu);
     lv_obj_add_style(menuBtn, LV_OBJ_PART_MAIN, &style_pr);
 
-
     lv_obj_align(menuBtn, mainBar, LV_ALIGN_OUT_BOTTOM_MID, 0, -70);
     lv_obj_set_event_cb(menuBtn, event_handler);
+    */
 
     lv_task_create(lv_update_task, 1000, LV_TASK_PRIO_LOWEST, NULL);
     lv_task_create(lv_battery_task, 30000, LV_TASK_PRIO_LOWEST, NULL);
 }
 
-void updateStepCounter(uint32_t counter)
-{
-    bar.setStepCounter(counter);
-}
-
-static void updateTime()
-{
+void updateTime() {
     time_t now;
-    struct tm  info;
+    struct tm info;
     char buf[64];
     time(&now);
     localtime_r(&now, &info);
     strftime(buf, sizeof(buf), "%H:%M", &info);
     lv_label_set_text(timeLabel, buf);
     lv_obj_align(timeLabel, NULL, LV_ALIGN_IN_TOP_MID, 0, 20);
+    strftime(buf, sizeof(buf), "%Y-%m-%d", &info);
+    lv_label_set_text(dateLabel, buf);
+    lv_obj_align(dateLabel, NULL, LV_ALIGN_IN_BOTTOM_MID, 0, -20);
     TTGOClass *ttgo = TTGOClass::getWatch();
     ttgo->rtc->syncToRtc();
 }
 
-void updateBatteryLevel()
-{
+void updateBatteryLevel() {
     TTGOClass *ttgo = TTGOClass::getWatch();
     int p = ttgo->power->getBattPercentage();
     bar.updateLevel(p);
 }
 
-void updateBatteryIcon(lv_icon_battery_t icon)
-{
+void updateBatteryIcon(lv_icon_battery_t icon) {
     if (icon >= LV_ICON_CALCULATION) {
         TTGOClass *ttgo = TTGOClass::getWatch();
         int level = ttgo->power->getBattPercentage();
@@ -454,18 +420,15 @@ void updateBatteryIcon(lv_icon_battery_t icon)
 }
 
 
-static void lv_update_task(struct _lv_task_t *data)
-{
+static void lv_update_task(struct _lv_task_t *data) {
     updateTime();
 }
 
-static void lv_battery_task(struct _lv_task_t *data)
-{
+static void lv_battery_task(struct _lv_task_t *data) {
     updateBatteryLevel();
 }
 
-static void view_event_handler(lv_obj_t *obj, lv_event_t event)
-{
+static void view_event_handler(lv_obj_t *obj, lv_event_t event) {
     int size = sizeof(_cfg) / sizeof(_cfg[0]);
     if (event == LV_EVENT_SHORT_CLICKED) {
         if (obj == menuBars.exitBtn()) {
@@ -492,8 +455,7 @@ static void view_event_handler(lv_obj_t *obj, lv_event_t event)
  */
 
 
-class Keyboard
-{
+class Keyboard {
 public:
     typedef enum {
         KB_EVENT_OK,
@@ -558,13 +520,11 @@ public:
         _kb = this;
     }
 
-    void align(const lv_obj_t *base, lv_align_t align, lv_coord_t x = 0, lv_coord_t y = 0)
-    {
+    void align(const lv_obj_t *base, lv_align_t align, lv_coord_t x = 0, lv_coord_t y = 0) {
         lv_obj_align(_kbCont, base, align, x, y);
     }
 
-    static void __kb_event_cb(lv_obj_t *kb, lv_event_t event)
-    {
+    static void __kb_event_cb(lv_obj_t *kb, lv_event_t event) {
         if (event != LV_EVENT_VALUE_CHANGED && event != LV_EVENT_LONG_PRESSED_REPEAT) return;
         lv_keyboard_ext_t *ext = (lv_keyboard_ext_t *)lv_obj_get_ext_attr(kb);
         const char *txt = lv_btnmatrix_get_active_btn_text(kb);
@@ -592,18 +552,15 @@ public:
         }
     }
 
-    void setKeyboardEvent(kb_event_cb cb)
-    {
+    void setKeyboardEvent(kb_event_cb cb) {
         _cb = cb;
     }
 
-    const char *getText()
-    {
+    const char *getText() {
         return (const char *)__buf;
     }
 
-    void hidden(bool en = true)
-    {
+    void hidden(bool en = true) {
         lv_obj_set_hidden(_kbCont, en);
     }
 

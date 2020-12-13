@@ -1,9 +1,5 @@
 /*
 Copyright (c) 2019 lewis he
-This is just a demonstration. Most of the functions are not implemented.
-The main implementation is low-power standby.
-The off-screen standby (not deep sleep) current is about 4mA.
-Select standard motherboard and standard backplane for testing.
 Created by Lewis he on October 10, 2019.
 */
 
@@ -37,7 +33,8 @@ enum {
     Q_EVENT_AXP_INT,
 } ;
 
-#define DEFAULT_SCREEN_TIMEOUT  30*1000
+#define DEFAULT_SCREEN_TIMEOUT  5*1000
+#define DEFAULT_BRIGHTNESS 10
 
 #define WATCH_FLAG_SLEEP_MODE   _BV(1)
 #define WATCH_FLAG_SLEEP_EXIT   _BV(2)
@@ -50,8 +47,7 @@ EventGroupHandle_t isr_group = NULL;
 bool lenergy = false;
 TTGOClass *ttgo;
 
-void setupNetwork()
-{
+void setupNetwork() {
     WiFi.mode(WIFI_STA);
     WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
         xEventGroupClearBits(g_event_group, G_EVENT_WIFI_CONNECTED);
@@ -71,10 +67,7 @@ void setupNetwork()
     }, WiFiEvent_t::SYSTEM_EVENT_STA_GOT_IP);
 }
 
-
-
-void low_energy()
-{
+void low_energy() {
     if (ttgo->bl->isOn()) {
         xEventGroupSetBits(isr_group, WATCH_FLAG_SLEEP_MODE);
         ttgo->closeBL();
@@ -97,17 +90,16 @@ void low_energy()
         ttgo->startLvglTick();
         ttgo->displayWakeup();
         ttgo->rtc->syncToSystem();
-        updateStepCounter(ttgo->bma->getCounter());
         updateBatteryLevel();
         updateBatteryIcon(LV_ICON_CALCULATION);
         lv_disp_trig_activity(NULL);
         ttgo->openBL();
         ttgo->bma->enableStepCountInterrupt();
+	updateTime();
     }
 }
 
-void setup()
-{
+void setup() {
     Serial.begin(115200);
 
     //Create a program that allows the required message objects and group flags
@@ -115,10 +107,7 @@ void setup()
     g_event_group = xEventGroupCreate();
     isr_group = xEventGroupCreate();
 
-
     ttgo = TTGOClass::getWatch();
-
-    //Initialize TWatch
     ttgo->begin();
 
     // Turn on the IRQ used
@@ -135,28 +124,22 @@ void setup()
     //Initialize lvgl
     ttgo->lvgl_begin();
 
-    // Enable BMA423 interrupt ，
-    // The default interrupt configuration,
+    // Enable BMA423 interrupt
     // you need to set the acceleration parameters, please refer to the BMA423_Accel example
     ttgo->bma->attachInterrupt();
-
-    //Connection interrupted to the specified pin
     pinMode(BMA423_INT1, INPUT);
     attachInterrupt(BMA423_INT1, [] {
         BaseType_t xHigherPriorityTaskWoken = pdFALSE;
         EventBits_t  bits = xEventGroupGetBitsFromISR(isr_group);
-        if (bits & WATCH_FLAG_SLEEP_MODE)
-        {
+        if (bits & WATCH_FLAG_SLEEP_MODE) {
             //! For quick wake up, use the group flag
             xEventGroupSetBitsFromISR(isr_group, WATCH_FLAG_SLEEP_EXIT | WATCH_FLAG_BMA_IRQ, &xHigherPriorityTaskWoken);
-        } else
-        {
+        } else {
             uint8_t data = Q_EVENT_BMA_INT;
             xQueueSendFromISR(g_event_queue_handle, &data, &xHigherPriorityTaskWoken);
         }
 
-        if (xHigherPriorityTaskWoken)
-        {
+        if (xHigherPriorityTaskWoken) {
             portYIELD_FROM_ISR ();
         }
     }, RISING);
@@ -166,17 +149,15 @@ void setup()
     attachInterrupt(AXP202_INT, [] {
         BaseType_t xHigherPriorityTaskWoken = pdFALSE;
         EventBits_t  bits = xEventGroupGetBitsFromISR(isr_group);
-        if (bits & WATCH_FLAG_SLEEP_MODE)
-        {
+        if (bits & WATCH_FLAG_SLEEP_MODE) {
             //! For quick wake up, use the group flag
             xEventGroupSetBitsFromISR(isr_group, WATCH_FLAG_SLEEP_EXIT | WATCH_FLAG_AXP_IRQ, &xHigherPriorityTaskWoken);
-        } else
-        {
+        } else {
             uint8_t data = Q_EVENT_AXP_INT;
             xQueueSendFromISR(g_event_queue_handle, &data, &xHigherPriorityTaskWoken);
         }
-        if (xHigherPriorityTaskWoken)
-        {
+
+        if (xHigherPriorityTaskWoken) {
             portYIELD_FROM_ISR ();
         }
     }, FALLING);
@@ -187,44 +168,16 @@ void setup()
     //Synchronize time to system time
     ttgo->rtc->syncToSystem();
 
-#ifdef LILYGO_WATCH_HAS_BUTTON
-
-    /*
-        ttgo->button->setClickHandler([]() {
-            Serial.println("Button2 Pressed");
-        });
-    */
-
-    //Set the user button long press to restart
-    ttgo->button->setLongClickHandler([]() {
-        Serial.println("Pressed Restart Button,Restart now ...");
-        delay(1000);
-        esp_restart();
-    });
-#endif
-
-    //Setting up the network
     setupNetwork();
-
-    //Execute your own GUI interface
     setupGui();
-
-    //Clear lvgl counter
-    lv_disp_trig_activity(NULL);
-
-#ifdef LILYGO_WATCH_HAS_BUTTON
-    //In lvgl we call the button processing regularly
-    lv_task_create([](lv_task_t *args) {
-        ttgo->button->loop();
-    }, 30, 1, nullptr);
-#endif
+    lv_disp_trig_activity(NULL); //Clear lvgl counter
 
     //When the initialization is complete, turn on the backlight
+    ttgo->setBrightness(DEFAULT_BRIGHTNESS);
     ttgo->openBL();
 }
 
-void loop()
-{
+void loop() {
     bool  rlst;
     uint8_t data;
     //! Fast response wake-up interrupt
@@ -232,7 +185,6 @@ void loop()
     if (bits & WATCH_FLAG_SLEEP_EXIT) {
         if (lenergy) {
             lenergy = false;
-            // rtc_clk_cpu_freq_set(RTC_CPU_FREQ_160M);
             setCpuFrequencyMhz(160);
         }
 
@@ -265,11 +217,6 @@ void loop()
             do {
                 rlst =  ttgo->bma->readInterrupt();
             } while (!rlst);
-
-            //! setp counter
-            if (ttgo->bma->isStepCounter()) {
-                updateStepCounter(ttgo->bma->getCounter());
-            }
             break;
         case Q_EVENT_AXP_INT:
             ttgo->power->readIRQ();
